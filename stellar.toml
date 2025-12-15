@@ -1,0 +1,98 @@
+# Dossiers proteges - Stellar refusera d'operer sur ces dossiers
+[protected]
+# Dossiers systeme
+system = [
+    "/",
+    "/System",
+    "/Library",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/etc",
+    "/var",
+    "/private",
+    "/Applications"
+]
+
+# Dossiers utilisateur sensibles
+user = [
+    ".ssh",
+    ".gnupg",
+    ".config",
+    "Library",
+    "Applications",
+]
+
+# Dossiers de developpement (ignores lors du scan)
+dev = [
+    "node_modules",
+    ".git",
+    ".svn",
+    "target",
+    "venv",
+    ".venv",
+    "__pycache__",
+    ".cargo",
+    "build",
+    "dist",
+    ".next",
+    ".nuxt"
+]
+
+[categories]
+# Documents
+Documents = [
+    "pdf", "doc", "docx", "txt", "md", "odt", "rtf",
+    "xlsx", "xls", "csv", "ods",
+    "pptx", "ppt", "odp",
+    "pages", "numbers", "key"
+]
+
+# Images
+Images = [
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif",
+    "svg", "ico", "heic", "heif", "raw", "cr2", "nef", "psd", "ai"
+]
+
+# Videos
+Videos = [
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm",
+    "m4v", "mpeg", "mpg", "3gp"
+]
+
+# Audio
+Audio = [
+    "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a",
+    "aiff", "opus", "mid", "midi"
+]
+
+# Archives
+Archives = [
+    "zip", "tar", "gz", "rar", "7z", "bz2", "xz"
+]
+
+# Code
+Code = [
+    "rs", "js", "ts", "py", "java", "c", "cpp", "h", "hpp",
+    "html", "css", "scss", "sass", "less",
+    "json", "yaml", "yml", "toml", "xml",
+    "sh", "bash", "zsh", "fish",
+    "sql", "go", "rb", "php", "swift", "kt", "scala",
+    "vue", "jsx", "tsx", "svelte"
+]
+
+# Executables / Installateurs
+Executables = [
+    "exe", "msi", "app", "apk", "ipa", "bin", "run",
+    "dmg", "pkg", "deb", "rpm", "iso"
+]
+
+# Fonts
+Fonts = [
+    "ttf", "otf", "woff", "woff2", "eot"
+]
+
+# Ebooks
+Ebooks = [
+    "epub", "mobi", "azw", "azw3", "fb2", "djvu"
+]
