@@ -17,8 +17,10 @@ fn main() {
     let protected_user = config.protected.user;
     let protected_system = config.protected.system;
     let protected_dev = config.protected.dev;
+    let categories = config.categories;
     let home_dir = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut folders: Vec<String> = Vec::new();
+
 
     println!("Available folders:\n");
 
@@ -58,4 +60,20 @@ fn main() {
 
     let selected_folder = &folders[choice - 1];
     println!("\nYou selected: {}", selected_folder);
+
+    let source_dir = format!("{}/{}", home_dir, selected_folder);
+
+    for entry in fs::read_dir(&source_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                let ext = ext.to_string_lossy().to_lowercase();
+                let category = config::find_category(&categories, &ext)
+                    .unwrap_or_else(|| "Others".to_string());
+                println!("{:?} -> {}", path.file_name().unwrap(), category);
+            }
+        }
+    }
 }

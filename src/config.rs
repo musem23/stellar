@@ -1,8 +1,10 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct Config {
     pub protected: Protected,
+    pub categories: HashMap<String, Vec<String>>,
 }
 #[derive(Deserialize)]
 pub struct Protected {
@@ -18,4 +20,13 @@ pub fn load_config() -> Result<Config, String> {
     let config: Config = toml::from_str(&config)
         .map_err(|e| format!("Failed to parse config file: {}", e))?;
     Ok(config)
+}
+
+pub fn find_category(categories: &HashMap<String, Vec<String>>, ext: &str) -> Option<String> {
+    for (category, extensions) in categories {
+        if extensions.contains(&ext.to_string()) {
+            return Some(category.clone());
+        }
+    }
+    None
 }
