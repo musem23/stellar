@@ -13,7 +13,7 @@ use std::fs;
 fn main() {
     ui::print_banner();
 
-    let config = match load_config() {
+    let mut config = match load_config() {
         Ok(c) => c,
         Err(e) => {
             ui::print_error(&format!("Failed to load config: {}", e));
@@ -32,7 +32,7 @@ fn main() {
         match menu_choice {
             0 => organize_folder(&config, &home_dir),
             1 => watch_folder(&config, &home_dir),
-            2 => ui::print_info("Settings coming soon..."),
+            2 => settings_menu(&mut config),
             3 => return,
             _ => return,
         }
@@ -60,16 +60,25 @@ fn organize_folder(config: &config::Config, home_dir: &str) {
     let selected_folder = &folders[folder_idx];
     let source_dir = format!("{}/{}", home_dir, selected_folder);
 
-    let org_mode = match ui::select_organization_mode() {
-        Some(m) => m,
-        None => return,
-    };
-
-    let rename_mode = match ui::select_rename_mode() {
-        Some(0) => Some(RenameMode::Clean),
-        Some(1) => Some(RenameMode::DatePrefix),
-        Some(2) => None,
-        _ => return,
+    let (org_mode, rename_mode) = if ui::confirm_use_defaults() {
+        let rm = match config.preferences.rename_mode {
+            0 => Some(RenameMode::Clean),
+            1 => Some(RenameMode::DatePrefix),
+            _ => None,
+        };
+        (config.preferences.organization_mode, rm)
+    } else {
+        let org = match ui::select_organization_mode(config.preferences.organization_mode) {
+            Some(m) => m,
+            None => return,
+        };
+        let rm = match ui::select_rename_mode(config.preferences.rename_mode) {
+            Some(0) => Some(RenameMode::Clean),
+            Some(1) => Some(RenameMode::DatePrefix),
+            Some(2) => None,
+            _ => return,
+        };
+        (org, rm)
     };
 
     let files_map = match org_mode {
@@ -119,14 +128,86 @@ fn watch_folder(config: &config::Config, home_dir: &str) {
     let selected_folder = &folders[folder_idx];
     let folder_path = format!("{}/{}", home_dir, selected_folder);
 
-    let rename_mode = match ui::select_rename_mode() {
-        Some(0) => Some(RenameMode::Clean),
-        Some(1) => Some(RenameMode::DatePrefix),
-        Some(2) => None,
-        _ => return,
+    let rename_mode = if ui::confirm_use_defaults() {
+        match config.preferences.rename_mode {
+            0 => Some(RenameMode::Clean),
+            1 => Some(RenameMode::DatePrefix),
+            _ => None,
+        }
+    } else {
+        match ui::select_rename_mode(config.preferences.rename_mode) {
+            Some(0) => Some(RenameMode::Clean),
+            Some(1) => Some(RenameMode::DatePrefix),
+            Some(2) => None,
+            _ => return,
+        }
     };
 
     watcher::watch_folder(&folder_path, &config.categories, rename_mode);
+}
+
+fn settings_menu(config: &mut config::Config) {
+    loop {
+        let choice = match ui::select_settings_menu(
+            config.preferences.organization_mode,
+            config.preferences.rename_mode,
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+
+        match choice {
+            0 => ui::display_categories(&config.categories),
+            1 => {
+                if let Some(name) = ui::input_category_name() {
+                    if let Some(extensions) = ui::input_extensions() {
+                        config.categories.insert(name.clone(), extensions);
+                        ui::print_success(&format!("Category '{}' added", name));
+                    }
+                }
+            }
+            2 => {
+                if let Some(name) = ui::select_category(&config.categories) {
+                    ui::print_info(&format!(
+                        "Current: {}",
+                        config.categories.get(&name).unwrap().join(", ")
+                    ));
+                    if let Some(extensions) = ui::input_extensions() {
+                        config.categories.insert(name.clone(), extensions);
+                        ui::print_success(&format!("Category '{}' updated", name));
+                    }
+                }
+            }
+            3 => {
+                if let Some(name) = ui::select_category(&config.categories) {
+                    if ui::confirm(&format!("Remove category '{}'?", name)) {
+                        config.categories.remove(&name);
+                        ui::print_success(&format!("Category '{}' removed", name));
+                    }
+                }
+            }
+            4 => {
+                if let Some(mode) = ui::select_default_organization_mode(config.preferences.organization_mode) {
+                    config.preferences.organization_mode = mode;
+                    ui::print_success("Default organization mode updated");
+                }
+            }
+            5 => {
+                if let Some(mode) = ui::select_default_rename_mode(config.preferences.rename_mode) {
+                    config.preferences.rename_mode = mode;
+                    ui::print_success("Default rename mode updated");
+                }
+            }
+            6 => {
+                match config::save_config(config) {
+                    Ok(_) => ui::print_success("Config saved to ~/.config/stellar/stellar.toml"),
+                    Err(e) => ui::print_error(&e),
+                }
+            }
+            7 => return,
+            _ => return,
+        }
+    }
 }
 
 fn get_available_folders(
