@@ -25,9 +25,9 @@ pub struct Config {
 #[derive(Deserialize, Serialize, Default, Clone)]
 pub struct Preferences {
     #[serde(default)]
-    pub organization_mode: usize, // 0 = category, 1 = date, 2 = hybrid
+    pub organization_mode: usize,
     #[serde(default)]
-    pub rename_mode: usize, // 0 = clean, 1 = date prefix, 2 = skip
+    pub rename_mode: usize,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -39,7 +39,6 @@ pub struct Protected {
 
 /// Load config from local file, user config, or embedded default
 pub fn load_config() -> Result<Config, String> {
-    // Priority: local -> user config -> embedded default
     let paths = [
         Some(PathBuf::from("./stellar.toml")),
         Some(get_user_config_path()),
@@ -53,7 +52,6 @@ pub fn load_config() -> Result<Config, String> {
         }
     }
 
-    // Use embedded default config
     toml::from_str(DEFAULT_CONFIG).map_err(|e| format!("Failed to parse default config: {}", e))
 }
 

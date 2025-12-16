@@ -23,13 +23,11 @@ use crate::stats::{format_duration, format_size, DryRunPreview, OrganizationStat
 pub fn print_banner() {
     let _ = Term::stdout().clear_screen();
 
-    // Seed based on current time for different colors each start
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as usize;
 
-    // Color combinations using golden ratio offset
     let c1 = seed % 6;
     let c2 = (seed / 6 + 2) % 6;
     let c3 = (seed / 36 + 4) % 6;
@@ -47,14 +45,13 @@ pub fn print_banner() {
 }
 
 fn apply_color(text: &str, color_idx: usize) -> console::StyledObject<&str> {
-    // Rust colors: yellow-orange tones (no red)
     match color_idx {
         0 => style(text).yellow().bold(),
-        1 => style(text).color256(214).bold(), // Orange
-        2 => style(text).color256(220).bold(), // Gold
-        3 => style(text).color256(178).bold(), // Mustard
-        4 => style(text).color256(222).bold(), // Light gold
-        5 => style(text).color256(179).bold(), // Sandy yellow
+        1 => style(text).color256(214).bold(),
+        2 => style(text).color256(220).bold(),
+        3 => style(text).color256(178).bold(),
+        4 => style(text).color256(222).bold(),
+        5 => style(text).color256(179).bold(),
         _ => style(text).yellow().bold(),
     }
 }
@@ -99,7 +96,6 @@ pub fn select_folder(folders: &[String]) -> FolderChoice {
         .unwrap_or(folders.len() + 1);
 
     if choice == folders.len() {
-        // Custom path option
         if let Some(path) = input_custom_path() {
             FolderChoice::CustomPath(path)
         } else {
@@ -528,7 +524,7 @@ pub fn prompt_after_action() -> bool {
         .interact()
         .unwrap_or(1);
 
-    choice == 0 // true = back to menu, false = exit
+    choice == 0
 }
 
 pub fn print_success(msg: &str) {

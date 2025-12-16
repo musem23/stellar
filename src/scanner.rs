@@ -130,7 +130,6 @@ where
             continue;
         }
 
-        // Skip hidden files and system files
         if let Some(name) = path.file_name() {
             let name_str = name.to_string_lossy();
             if name_str.starts_with('.')
@@ -193,7 +192,6 @@ fn should_skip_directory(path: &Path, categories: &HashMap<String, Vec<String>>)
         None => return true,
     };
 
-    // Skip hidden, protected, project folders, and existing category folders
     name.starts_with('.')
         || PROTECTED_SUBFOLDERS.contains(&name.as_str())
         || is_project_folder(&path.to_string_lossy())

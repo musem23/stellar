@@ -47,7 +47,6 @@ pub fn record_operation(folder: &str, moves: Vec<FileMove>) -> Result<(), String
         moves,
     });
 
-    // Keep only the last N operations
     if history.operations.len() > MAX_HISTORY {
         history.operations = history
             .operations
@@ -72,7 +71,6 @@ pub fn undo_last_operation() -> Result<UndoResult, String> {
     let mut folders_to_check: Vec<PathBuf> = Vec::new();
 
     for mv in &operation.moves {
-        // Track the folder where the file was moved to
         let dest_path = PathBuf::from(&mv.to);
         if let Some(parent) = dest_path.parent() {
             if !folders_to_check.contains(&parent.to_path_buf()) {
@@ -89,7 +87,6 @@ pub fn undo_last_operation() -> Result<UndoResult, String> {
         }
     }
 
-    // Remove empty folders that were created during organization
     cleanup_empty_folders(&folders_to_check);
 
     save_history(&history)?;
@@ -165,18 +162,13 @@ fn cleanup_empty_folders(folders: &[PathBuf]) {
     for folder in folders {
         let mut current = folder.clone();
 
-        // Try to remove the folder and its parents if they become empty
         while current.exists() {
-            // Check if folder is empty
             let is_empty = fs::read_dir(&current)
                 .map(|mut entries| entries.next().is_none())
                 .unwrap_or(false);
 
             if is_empty {
-                // Remove empty folder
                 let _ = fs::remove_dir(&current);
-
-                // Move up to parent
                 if let Some(parent) = current.parent() {
                     current = parent.to_path_buf();
                 } else {

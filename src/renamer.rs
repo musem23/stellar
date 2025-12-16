@@ -41,7 +41,6 @@ pub fn rename_file(path: &Path, mode: &RenameMode) -> String {
 /// Convert text to a clean, URL-friendly slug
 /// Handles accents: élève café → eleve-cafe
 fn slugify(text: &str) -> String {
-    // NFD normalization separates base characters from accents
     let normalized: String = text.nfd().collect();
 
     let mut result = String::with_capacity(text.len());
@@ -55,10 +54,8 @@ fn slugify(text: &str) -> String {
             result.push('-');
             prev_dash = true;
         }
-        // Skip accents (combining diacritical marks) and other chars
     }
 
-    // Remove duplicate suffixes and trailing dashes
     remove_copy_suffixes(&result)
 }
 
@@ -75,7 +72,6 @@ fn remove_copy_suffixes(name: &str) -> String {
         }
     }
 
-    // Collapse multiple dashes and trim
     while result.contains("--") {
         result = result.replace("--", "-");
     }

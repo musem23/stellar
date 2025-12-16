@@ -27,7 +27,6 @@ pub fn watch_folder(
     ui::print_info(&format!("Watching folder: {}", folder_path));
     ui::print_info("Press Ctrl+C to stop watching...\n");
 
-    // Setup Ctrl+C handler
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
