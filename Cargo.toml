@@ -1,5 +1,5 @@
 [package]
-name = "stellar"
+name = "stellar-cli"
 version = "1.0.0-beta.2"
 edition = "2021"
 authors = ["musem23"]
