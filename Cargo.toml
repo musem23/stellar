@@ -1,13 +1,32 @@
 [package]
 name = "stellar"
-version = "1.0.0"
+version = "1.0.0-beta.2"
 edition = "2021"
+authors = ["musem23"]
+description = "A fast CLI tool to organize your files automatically by category, date, or hybrid mode"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/musem23/stellar"
+homepage = "https://github.com/musem23/stellar"
+keywords = ["cli", "files", "organizer", "productivity", "automation"]
+categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 toml = "0.8"
 chrono = "0.4"
 dialoguer = "0.11"
 console = "0.15"
 notify = "6.1"
+sha2 = "0.10"
+indicatif = "0.17"
+fs2 = "0.4"
+clap = { version = "4.4", features = ["derive"] }
+unicode-normalization = "0.1"
+ctrlc = "3.4"
 
+[profile.release]
+lto = true
+strip = true
+opt-level = 3

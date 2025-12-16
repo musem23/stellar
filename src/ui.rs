@@ -1,99 +1,157 @@
+// Stellar - User Interface Module
+// @musem23
+//
+// Handles all terminal UI interactions using dialoguer and console crates.
+// Provides menus, prompts, progress bars, and styled output messages.
+// All user-facing text and formatting is centralized here.
+
 use console::{style, Term};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
+
+use crate::duplicates::DuplicateGroup;
+use crate::history::Operation;
+use crate::stats::{format_duration, format_size, DryRunPreview, OrganizationStats};
+
+// ============================================================================
+// Banner & Main Menu
+// ============================================================================
 
 pub fn print_banner() {
-    let term = Term::stdout();
-    let _ = term.clear_screen();
+    let _ = Term::stdout().clear_screen();
 
+    // Seed based on current time for different colors each start
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as usize;
+
+    // Color combinations using golden ratio offset
+    let c1 = seed % 6;
+    let c2 = (seed / 6 + 2) % 6;
+    let c3 = (seed / 36 + 4) % 6;
+
+    println!();
+    println!("    {}", apply_color(r"\|/", c1));
     println!(
-        "{}",
-        style(
-            r"
-  \|/
- --*--  Stellar
-  /|\
-"
-        )
-        .cyan()
-        .bold()
+        "   {} {}",
+        apply_color("--*--", c2),
+        apply_color("Stellar", c3)
     );
+    println!("    {}", apply_color(r"/|\", (c1 + 3) % 6));
+    println!();
     println!("  {}\n", style("Organize your files in a snap").dim());
 }
 
-pub fn select_main_menu() -> Option<usize> {
-    let options = vec![
-        format!("{} Organize a folder", style("[>]").green()),
-        format!("{} Watch mode (auto-organize)", style("[~]").cyan()),
-        format!("{} Settings", style("[*]").yellow()),
-        format!("{} Exit", style("[x]").red()),
-    ];
-
-    Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("What would you like to do?")
-        .items(&options)
-        .default(0)
-        .interact()
-        .ok()
+fn apply_color(text: &str, color_idx: usize) -> console::StyledObject<&str> {
+    // Rust colors: yellow-orange tones (no red)
+    match color_idx {
+        0 => style(text).yellow().bold(),
+        1 => style(text).color256(214).bold(), // Orange
+        2 => style(text).color256(220).bold(), // Gold
+        3 => style(text).color256(178).bold(), // Mustard
+        4 => style(text).color256(222).bold(), // Light gold
+        5 => style(text).color256(179).bold(), // Sandy yellow
+        _ => style(text).yellow().bold(),
+    }
 }
 
-pub fn select_folder(folders: &[String]) -> Option<usize> {
-    let display_folders: Vec<String> = folders
+pub fn select_main_menu() -> Option<usize> {
+    let options = [
+        ("[>]", "Organize a folder", "green"),
+        ("[~]", "Watch mode (auto-organize)", "cyan"),
+        ("[=]", "Find duplicates", "yellow"),
+        ("[<]", "Undo last operation", "magenta"),
+        ("[H]", "History", "blue"),
+        ("[*]", "Settings", "yellow"),
+        ("[x]", "Exit", "red"),
+    ];
+
+    select_menu("What would you like to do?", &options, 0)
+}
+
+// ============================================================================
+// Folder & Mode Selection
+// ============================================================================
+
+pub enum FolderChoice {
+    Index(usize),
+    CustomPath(String),
+    Back,
+}
+
+pub fn select_folder(folders: &[String]) -> FolderChoice {
+    let mut items: Vec<String> = folders
         .iter()
         .map(|f| format!("{} {}", style("[/]").cyan(), f))
         .collect();
+    items.push(format!("{} Enter custom path...", style("[>]").yellow()));
+    items.push(format!("{} Back", style("[<]").dim()));
 
-    Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select a folder to organize")
-        .items(&display_folders)
+    let choice = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select a folder")
+        .items(&items)
         .default(0)
         .interact()
+        .unwrap_or(folders.len() + 1);
+
+    if choice == folders.len() {
+        // Custom path option
+        if let Some(path) = input_custom_path() {
+            FolderChoice::CustomPath(path)
+        } else {
+            FolderChoice::Back
+        }
+    } else if choice == folders.len() + 1 {
+        FolderChoice::Back
+    } else {
+        FolderChoice::Index(choice)
+    }
+}
+
+pub fn input_custom_path() -> Option<String> {
+    Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter folder path (e.g., ~/Desktop or /path/to/folder)")
+        .allow_empty(true)
+        .interact_text()
         .ok()
+        .filter(|s: &String| !s.is_empty())
 }
 
 pub fn select_organization_mode(default: usize) -> Option<usize> {
-    let options = vec![
-        format!("{} By category (Documents, Images, Videos...)", style("[#]").green()),
-        format!("{} By date (2024/01-january, 2024/02-february...)", style("[@]").cyan()),
-        format!("{} Back", style("[<]").dim()),
+    let options = [
+        ("[#]", "By category (Documents, Images, Videos...)", "green"),
+        ("[@]", "By date (2024/01-january...)", "cyan"),
+        ("[+]", "Hybrid (Documents/2024, Images/2024...)", "magenta"),
+        ("[<]", "Back", "dim"),
     ];
-
-    let choice = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select organization mode")
-        .items(&options)
-        .default(default)
-        .interact()
-        .ok()?;
-
-    if choice == 2 {
-        None
-    } else {
-        Some(choice)
-    }
+    select_with_back("Select organization mode", &options, default, 3)
 }
 
 pub fn select_rename_mode(default: usize) -> Option<usize> {
-    let options = vec![
-        format!("{} Clean (lowercase, dashes, no duplicates)", style("[~]").green()),
-        format!("{} Date prefix (2024-01-15-filename.pdf)", style("[@]").cyan()),
-        format!("{} Skip renaming", style("[-]").yellow()),
-        format!("{} Back", style("[<]").dim()),
+    let options = [
+        ("[~]", "Clean (lowercase, dashes, no duplicates)", "green"),
+        ("[@]", "Date prefix (2024-01-15-filename.pdf)", "cyan"),
+        ("[-]", "Skip renaming", "yellow"),
+        ("[<]", "Back", "dim"),
     ];
-
-    let choice = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select rename mode")
-        .items(&options)
-        .default(default)
-        .interact()
-        .ok()?;
-
-    if choice == 3 {
-        None
-    } else {
-        Some(choice)
-    }
+    select_with_back("Select rename mode", &options, default, 3)
 }
+
+pub fn select_default_organization_mode(current: usize) -> Option<usize> {
+    select_organization_mode(current)
+}
+
+pub fn select_default_rename_mode(current: usize) -> Option<usize> {
+    select_rename_mode(current)
+}
+
+// ============================================================================
+// Preview & Statistics
+// ============================================================================
 
 pub fn print_preview(files_map: &HashMap<String, Vec<PathBuf>>) {
     println!("\n{}\n", style("Organization preview:").bold());
@@ -108,40 +166,229 @@ pub fn print_preview(files_map: &HashMap<String, Vec<PathBuf>>) {
         );
         total += files.len();
     }
-    println!("\n  {} {}\n", style("Total:").bold(), style(format!("{} files", total)).green());
+    println!(
+        "\n  {} {}\n",
+        style("Total:").bold(),
+        style(format!("{} files", total)).green()
+    );
 }
 
-pub fn confirm(message: &str) -> bool {
-    Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(message)
-        .default(true)
+pub fn print_dry_run_preview(preview: &DryRunPreview) {
+    println!(
+        "\n{}\n",
+        style("Dry-run preview (no changes made):").bold().yellow()
+    );
+
+    for (i, mv) in preview.moves.iter().take(20).enumerate() {
+        let from_name = mv.from.file_name().unwrap().to_string_lossy();
+        let to_folder = mv
+            .to
+            .parent()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy();
+        let to_name = mv.to.file_name().unwrap().to_string_lossy();
+        let rename_tag = if mv.is_rename {
+            style(" (renamed)").magenta()
+        } else {
+            style("")
+        };
+
+        println!(
+            "  {} {} {} {}/{} {}",
+            style(format!("{:>3}.", i + 1)).dim(),
+            style(&from_name).red(),
+            style("->").dim(),
+            style(&to_folder).cyan(),
+            style(&to_name).green(),
+            rename_tag
+        );
+    }
+
+    if preview.moves.len() > 20 {
+        println!(
+            "\n  {} {}",
+            style("...").dim(),
+            style(format!("and {} more files", preview.moves.len() - 20)).dim()
+        );
+    }
+
+    println!(
+        "\n  {} {} files ({})\n",
+        style("Total:").bold(),
+        style(preview.total_files).green(),
+        style(format_size(preview.total_bytes)).cyan()
+    );
+}
+
+pub fn print_statistics(stats: &OrganizationStats) {
+    let sep = style("=".repeat(50)).dim();
+    println!("\n{}", sep);
+    println!("{}\n", style("  Organization Statistics").bold().cyan());
+
+    println!(
+        "  {} {} files moved",
+        style("[>]").green(),
+        style(stats.files_moved).green().bold()
+    );
+
+    if stats.files_renamed > 0 {
+        println!(
+            "  {} {} files renamed",
+            style("[~]").magenta(),
+            style(stats.files_renamed).magenta()
+        );
+    }
+    if stats.files_skipped > 0 {
+        println!(
+            "  {} {} files skipped",
+            style("[-]").yellow(),
+            style(stats.files_skipped).yellow()
+        );
+    }
+    if stats.duplicates_found > 0 {
+        println!(
+            "  {} {} duplicates found",
+            style("[=]").cyan(),
+            style(stats.duplicates_found).cyan()
+        );
+    }
+
+    println!(
+        "  {} {} processed",
+        style("[#]").blue(),
+        style(format_size(stats.total_bytes)).blue()
+    );
+    println!(
+        "  {} completed in {}",
+        style("[T]").dim(),
+        style(format_duration(stats.duration_ms)).dim()
+    );
+
+    if !stats.categories.is_empty() {
+        println!("\n  {}", style("By category:").bold());
+        let mut sorted: Vec<_> = stats.categories.iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(a.1));
+        for (cat, count) in sorted {
+            println!(
+                "    {} {} ({})",
+                style("[/]").cyan(),
+                cat,
+                style(count).dim()
+            );
+        }
+    }
+
+    println!("{}\n", sep);
+}
+
+// ============================================================================
+// Duplicates
+// ============================================================================
+
+pub fn print_duplicates(groups: &[DuplicateGroup]) {
+    if groups.is_empty() {
+        print_info("No duplicate files found.");
+        return;
+    }
+
+    let total_dupes: usize = groups.iter().map(|g| g.files.len() - 1).sum();
+    let wasted: u64 = groups
+        .iter()
+        .map(|g| g.size * (g.files.len() as u64 - 1))
+        .sum();
+
+    println!("\n{}\n", style("Duplicate files found:").bold().yellow());
+
+    for (i, group) in groups.iter().enumerate() {
+        println!(
+            "  {} {} ({} each)",
+            style(format!("Group {}:", i + 1)).bold(),
+            style(format!("{} files", group.files.len())).cyan(),
+            style(format_size(group.size)).dim()
+        );
+        for (j, file) in group.files.iter().enumerate() {
+            let marker = if j == 0 {
+                style("[K]").green()
+            } else {
+                style("[D]").red()
+            };
+            println!("    {} {}", marker, file.display());
+        }
+        println!();
+    }
+
+    println!(
+        "  {} {} duplicate files wasting {}\n",
+        style("Summary:").bold(),
+        style(total_dupes).red(),
+        style(format_size(wasted)).red()
+    );
+}
+
+pub fn select_duplicates_action() -> Option<usize> {
+    let options = [
+        ("[x]", "Remove all duplicates (keep first)", "red"),
+        ("[?]", "Review each group", "yellow"),
+        ("[<]", "Cancel", "dim"),
+    ];
+    select_with_back("What do you want to do with duplicates?", &options, 2, 2)
+}
+
+pub fn select_file_to_keep(files: &[PathBuf]) -> Option<usize> {
+    let items: Vec<String> = files
+        .iter()
+        .map(|f| format!("{} {}", style("[/]").cyan(), f.display()))
+        .collect();
+
+    Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select file to KEEP (others will be deleted)")
+        .items(&items)
+        .default(0)
         .interact()
-        .unwrap_or(false)
+        .ok()
 }
 
-pub fn print_success(message: &str) {
-    println!("\n{} {}", style("[+]").green().bold(), style(message).green());
+// ============================================================================
+// History
+// ============================================================================
+
+pub fn print_history(operations: &[Operation]) {
+    if operations.is_empty() {
+        print_info("No operations in history.");
+        return;
+    }
+
+    println!("\n{}\n", style("Recent operations:").bold());
+    for (i, op) in operations.iter().rev().enumerate() {
+        println!(
+            "  {} {} - {} ({} files)",
+            style(format!("{}.", i + 1)).dim(),
+            style(&op.timestamp).cyan(),
+            style(&op.folder).bold(),
+            style(op.moves.len()).green()
+        );
+    }
+    println!();
 }
 
-pub fn print_error(message: &str) {
-    println!("\n{} {}", style("[!]").red().bold(), style(message).red());
-}
-
-pub fn print_info(message: &str) {
-    println!("\n{} {}", style("[i]").blue().bold(), message);
-}
+// ============================================================================
+// Settings Menu
+// ============================================================================
 
 pub fn select_settings_menu(org_mode: usize, rename_mode: usize) -> Option<usize> {
-    let org_name = match org_mode {
-        0 => style("Category").green().to_string(),
-        1 => style("Date").cyan().to_string(),
-        _ => style("Category").green().to_string(),
+    let org_label = match org_mode {
+        0 => style("Category").green(),
+        1 => style("Date").cyan(),
+        2 => style("Hybrid").magenta(),
+        _ => style("Category").green(),
     };
-    let rename_name = match rename_mode {
-        0 => style("Clean").green().to_string(),
-        1 => style("Date prefix").cyan().to_string(),
-        2 => style("Skip").yellow().to_string(),
-        _ => style("Clean").green().to_string(),
+    let rename_label = match rename_mode {
+        0 => style("Clean").green(),
+        1 => style("Date prefix").cyan(),
+        2 => style("Skip").yellow(),
+        _ => style("Clean").green(),
     };
 
     let options = vec![
@@ -149,8 +396,12 @@ pub fn select_settings_menu(org_mode: usize, rename_mode: usize) -> Option<usize
         format!("{} Add category", style("[+]").green()),
         format!("{} Edit category", style("[~]").yellow()),
         format!("{} Remove category", style("[-]").red()),
-        format!("{} Organization mode: {}", style("[O]").magenta(), org_name),
-        format!("{} Rename mode: {}", style("[R]").magenta(), rename_name),
+        format!(
+            "{} Organization mode: {}",
+            style("[O]").magenta(),
+            org_label
+        ),
+        format!("{} Rename mode: {}", style("[R]").magenta(), rename_label),
         format!("{} Save changes", style("[S]").green().bold()),
         format!("{} Back", style("[<]").dim()),
     ];
@@ -163,47 +414,16 @@ pub fn select_settings_menu(org_mode: usize, rename_mode: usize) -> Option<usize
         .ok()
 }
 
-pub fn select_default_organization_mode(current: usize) -> Option<usize> {
-    let options = vec![
-        format!("{} By category (Documents, Images, Videos...)", style("[#]").green()),
-        format!("{} By date (2024/01-january, 2024/02-february...)", style("[@]").cyan()),
-    ];
-
-    Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Default organization mode")
-        .items(&options)
-        .default(current)
-        .interact()
-        .ok()
-}
-
-pub fn select_default_rename_mode(current: usize) -> Option<usize> {
-    let options = vec![
-        format!("{} Clean (lowercase, dashes, no duplicates)", style("[~]").green()),
-        format!("{} Date prefix (2024-01-15-filename.pdf)", style("[@]").cyan()),
-        format!("{} Skip renaming", style("[-]").yellow()),
-    ];
-
-    Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Default rename mode")
-        .items(&options)
-        .default(current)
-        .interact()
-        .ok()
-}
-
 pub fn display_categories(categories: &HashMap<String, Vec<String>>) {
     println!("\n{}\n", style("Current categories:").bold());
-
     let mut sorted: Vec<_> = categories.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
-
-    for (category, extensions) in sorted {
+    for (cat, exts) in sorted {
         println!(
             "  {} {} {}",
             style("[/]").cyan(),
-            style(category).bold(),
-            style(format!("({})", extensions.join(", "))).dim()
+            style(cat).bold(),
+            style(format!("({})", exts.join(", "))).dim()
         );
     }
     println!();
@@ -213,51 +433,187 @@ pub fn select_category(categories: &HashMap<String, Vec<String>>) -> Option<Stri
     let mut names: Vec<_> = categories.keys().cloned().collect();
     names.sort();
 
-    let display: Vec<String> = names
+    let mut items: Vec<String> = names
         .iter()
         .map(|n| format!("{} {}", style("[/]").cyan(), n))
         .collect();
+    items.push(format!("{} Back", style("[<]").dim()));
 
-    let idx = Select::with_theme(&ColorfulTheme::default())
+    let choice = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select a category")
-        .items(&display)
+        .items(&items)
         .default(0)
         .interact()
         .ok()?;
 
-    Some(names[idx].clone())
+    if choice == names.len() {
+        None
+    } else {
+        Some(names[choice].clone())
+    }
 }
 
 pub fn input_category_name() -> Option<String> {
     Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Category name")
+        .with_prompt("Category name (empty to cancel)")
+        .allow_empty(true)
         .interact_text()
         .ok()
+        .filter(|s: &String| !s.is_empty())
 }
 
 pub fn input_extensions() -> Option<Vec<String>> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Extensions (comma separated, e.g.: pdf, doc, txt)")
+        .allow_empty(true)
         .interact_text()
         .ok()?;
 
-    let extensions: Vec<String> = input
+    if input.is_empty() {
+        return None;
+    }
+
+    let exts: Vec<String> = input
         .split(',')
         .map(|s| s.trim().to_lowercase().trim_start_matches('.').to_string())
         .filter(|s| !s.is_empty())
         .collect();
 
-    if extensions.is_empty() {
+    if exts.is_empty() {
         None
     } else {
-        Some(extensions)
+        Some(exts)
     }
 }
 
-pub fn confirm_use_defaults() -> bool {
+// ============================================================================
+// Confirmations & Messages
+// ============================================================================
+
+pub fn confirm(message: &str) -> bool {
     Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("Use saved preferences?")
+        .with_prompt(message)
         .default(true)
         .interact()
-        .unwrap_or(true)
+        .unwrap_or(false)
+}
+
+pub fn confirm_with_default(message: &str, default: bool) -> bool {
+    Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(message)
+        .default(default)
+        .interact()
+        .unwrap_or(default)
+}
+
+pub fn confirm_use_defaults() -> bool {
+    confirm_with_default("Use saved preferences?", true)
+}
+
+pub fn ask_dry_run() -> bool {
+    confirm_with_default("Preview changes first (dry-run)?", true)
+}
+
+/// Prompt user after an action to go back or exit
+pub fn prompt_after_action() -> bool {
+    let options = vec![
+        format!("{} Back to menu", style("[<]").cyan()),
+        format!("{} Exit", style("[x]").red()),
+    ];
+
+    let choice = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("What next?")
+        .items(&options)
+        .default(0)
+        .interact()
+        .unwrap_or(1);
+
+    choice == 0 // true = back to menu, false = exit
+}
+
+pub fn print_success(msg: &str) {
+    println!("\n{} {}", style("[+]").green().bold(), style(msg).green());
+}
+
+pub fn print_error(msg: &str) {
+    println!("\n{} {}", style("[!]").red().bold(), style(msg).red());
+}
+
+pub fn print_info(msg: &str) {
+    println!("\n{} {}", style("[i]").blue().bold(), msg);
+}
+
+pub fn print_warning(msg: &str) {
+    println!("\n{} {}", style("[!]").yellow().bold(), style(msg).yellow());
+}
+
+// ============================================================================
+// Progress Indicators
+// ============================================================================
+
+pub fn create_progress_bar(total: u64, message: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    pb.set_message(message.to_string());
+    pb
+}
+
+pub fn create_spinner(message: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap(),
+    );
+    pb.set_message(message.to_string());
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+fn select_menu(prompt: &str, options: &[(&str, &str, &str)], default: usize) -> Option<usize> {
+    let items: Vec<String> = options
+        .iter()
+        .map(|(icon, text, color)| {
+            let styled_icon = match *color {
+                "green" => style(*icon).green(),
+                "cyan" => style(*icon).cyan(),
+                "yellow" => style(*icon).yellow(),
+                "magenta" => style(*icon).magenta(),
+                "blue" => style(*icon).blue(),
+                "red" => style(*icon).red(),
+                _ => style(*icon).dim(),
+            };
+            format!("{} {}", styled_icon, text)
+        })
+        .collect();
+
+    Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .items(&items)
+        .default(default)
+        .interact()
+        .ok()
+}
+
+fn select_with_back(
+    prompt: &str,
+    options: &[(&str, &str, &str)],
+    default: usize,
+    back_idx: usize,
+) -> Option<usize> {
+    let choice = select_menu(prompt, options, default)?;
+    if choice == back_idx {
+        None
+    } else {
+        Some(choice)
+    }
 }
