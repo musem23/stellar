@@ -63,6 +63,7 @@ pub fn select_main_menu() -> Option<usize> {
         ("[=]", "Find duplicates", "yellow"),
         ("[<]", "Undo last operation", "magenta"),
         ("[H]", "History", "blue"),
+        ("[L]", "Security (lock/vault)", "red"),
         ("[*]", "Settings", "yellow"),
         ("[x]", "Exit", "red"),
     ];
@@ -458,6 +459,13 @@ pub fn input_category_name() -> Option<String> {
         .filter(|s: &String| !s.is_empty())
 }
 
+pub fn input_text(prompt: &str) -> Option<String> {
+    Input::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .interact_text()
+        .ok()
+}
+
 pub fn input_extensions() -> Option<Vec<String>> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Extensions (comma separated, e.g.: pdf, doc, txt)")
@@ -541,6 +549,163 @@ pub fn print_info(msg: &str) {
 
 pub fn print_warning(msg: &str) {
     println!("\n{} {}", style("[!]").yellow().bold(), style(msg).yellow());
+}
+
+// ============================================================================
+// Security Menu
+// ============================================================================
+
+pub fn select_security_menu() -> Option<usize> {
+    let options = [
+        ("[L]", "Lock a file (encrypt in place)", "cyan"),
+        ("[U]", "Unlock a file (decrypt)", "green"),
+        ("[V]", "Vault (secure storage)", "yellow"),
+        ("[<]", "Back", "dim"),
+    ];
+
+    select_menu("Security", &options, 0)
+}
+
+pub fn select_vault_menu(is_initialized: bool) -> Option<usize> {
+    if !is_initialized {
+        let options = [("[+]", "Initialize vault", "green"), ("[<]", "Back", "dim")];
+        return select_menu("Vault", &options, 0);
+    }
+
+    let options = [
+        ("[+]", "Add files to vault", "green"),
+        ("[=]", "List vault contents", "cyan"),
+        ("[>]", "Extract from vault", "yellow"),
+        ("[x]", "Destroy (delete permanently)", "red"),
+        ("[R]", "Recover access", "magenta"),
+        ("[<]", "Back", "dim"),
+    ];
+
+    select_menu("Vault", &options, 0)
+}
+
+pub fn select_security_level() -> Option<usize> {
+    let options = [
+        ("[S]", "Standard (recovery codes available)", "green"),
+        ("[M]", "Maximum (no recovery - most secure)", "red"),
+        ("[<]", "Back", "dim"),
+    ];
+
+    select_menu("Security Level", &options, 0)
+}
+
+pub fn input_file_path(prompt: &str) -> Option<String> {
+    let options = [
+        ("[>]", "Browse Downloads", "cyan"),
+        ("[>]", "Browse Desktop", "cyan"),
+        ("[>]", "Browse current directory", "cyan"),
+        ("[?]", "Type path manually", "yellow"),
+        ("[<]", "Back", "dim"),
+    ];
+
+    loop {
+        let choice = select_menu(prompt, &options, 0)?;
+
+        let result = match choice {
+            0 => browse_directory("~/Downloads"),
+            1 => browse_directory("~/Desktop"),
+            2 => browse_directory("."),
+            3 => {
+                let path: String = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Path (~ supported)")
+                    .interact_text()
+                    .ok()?;
+                Some(expand_path(&path))
+            }
+            _ => return None,
+        };
+
+        if result.is_some() {
+            return result;
+        }
+    }
+}
+
+fn expand_path(path: &str) -> String {
+    if path.starts_with('~') {
+        if let Ok(home) = std::env::var("HOME") {
+            return path.replacen('~', &home, 1);
+        }
+    }
+    path.to_string()
+}
+
+fn browse_directory(dir: &str) -> Option<String> {
+    let expanded = if dir.starts_with('~') {
+        let home = std::env::var("HOME").ok()?;
+        dir.replacen('~', &home, 1)
+    } else {
+        dir.to_string()
+    };
+
+    let path = std::path::Path::new(&expanded);
+    if !path.is_dir() {
+        println!("{}", style("Directory not found").red());
+        return None;
+    }
+
+    let mut entries: Vec<_> = std::fs::read_dir(path)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .collect();
+
+    entries.sort_by_key(|e| e.file_name());
+
+    let items: Vec<String> = entries
+        .iter()
+        .map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if e.path().is_dir() {
+                format!("{}/", name)
+            } else {
+                name
+            }
+        })
+        .collect();
+
+    if items.is_empty() {
+        println!("{}", style("Directory is empty").yellow());
+        return None;
+    }
+
+    let item_refs: Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+    let idx = select_from_list(&format!("Select from {}", dir), &item_refs)?;
+
+    let selected = &entries[idx];
+    let selected_path = selected.path();
+
+    if selected_path.is_dir() {
+        browse_directory(&selected_path.to_string_lossy())
+    } else {
+        Some(selected_path.to_string_lossy().to_string())
+    }
+}
+
+pub fn select_from_list(prompt: &str, items: &[&str]) -> Option<usize> {
+    let mut menu_items: Vec<String> = items
+        .iter()
+        .map(|s| format!("{} {}", style("[>]").cyan(), s))
+        .collect();
+    menu_items.push(format!("{} Back", style("[<]").dim()));
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .items(&menu_items)
+        .default(0)
+        .interact_opt()
+        .ok()??;
+
+    if selection == items.len() {
+        None
+    } else {
+        Some(selection)
+    }
 }
 
 // ============================================================================
