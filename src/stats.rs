@@ -12,6 +12,41 @@ use std::time::Instant;
 // Organization Statistics
 // ============================================================================
 
+/// Represents a file that was skipped during organization
+#[derive(Clone)]
+pub struct SkippedFile {
+    pub path: PathBuf,
+    pub reason: SkipReason,
+}
+
+/// Reasons why a file might be skipped
+#[derive(Clone)]
+#[allow(dead_code)] // Variants may be used in future error scenarios
+pub enum SkipReason {
+    /// Failed to create destination directory
+    DirectoryCreationFailed(String),
+    /// Failed to move file (includes cross-device errors)
+    MoveFailed(String),
+    /// File disappeared during operation
+    FileNotFound,
+    /// Permission denied
+    PermissionDenied,
+    /// Unknown error
+    Other(String),
+}
+
+impl std::fmt::Display for SkipReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SkipReason::DirectoryCreationFailed(e) => write!(f, "Cannot create folder: {}", e),
+            SkipReason::MoveFailed(e) => write!(f, "Move failed: {}", e),
+            SkipReason::FileNotFound => write!(f, "File not found"),
+            SkipReason::PermissionDenied => write!(f, "Permission denied"),
+            SkipReason::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct OrganizationStats {
     pub files_moved: usize,
@@ -21,6 +56,7 @@ pub struct OrganizationStats {
     pub total_bytes: u64,
     pub categories: HashMap<String, usize>,
     pub duration_ms: u64,
+    pub skipped_files: Vec<SkippedFile>,
     start_time: Option<Instant>,
 }
 
@@ -48,8 +84,10 @@ impl OrganizationStats {
         self.files_renamed += 1;
     }
 
-    pub fn add_skipped(&mut self) {
+    /// Add a skipped file with detailed reason
+    pub fn add_skipped_with_reason(&mut self, path: PathBuf, reason: SkipReason) {
         self.files_skipped += 1;
+        self.skipped_files.push(SkippedFile { path, reason });
     }
 }
 

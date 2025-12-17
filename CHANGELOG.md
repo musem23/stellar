@@ -2,6 +2,26 @@
 
 All notable changes to Stellar will be documented in this file.
 
+## [1.0.0-beta.3] - 2025-12-16
+
+### Fixed
+- **Cross-device moves** - Files can now be moved between different partitions/drives (copy+delete fallback)
+- **Silent error handling** - Errors are now captured and displayed instead of being silently ignored
+- **Detailed skip reasons** - Users see why files were skipped (permission denied, file not found, etc.)
+
+### Added
+- `SkipReason` enum with detailed error categorization
+- `SkippedFile` struct to track failed operations with reasons
+- `print_skipped_files()` UI function to display up to 10 skipped files with reasons
+- Cross-platform EXDEV detection (Unix: 18, Windows: 17)
+
+### Changed
+- `move_files()` now logs directory creation failures with detailed reasons
+- `move_single_file()` checks file existence before attempting move
+- Statistics panel now shows skipped files with their failure reasons
+
+---
+
 ## [1.0.0-beta.2] - 2025-12-15
 
 ### Added

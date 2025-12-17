@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use crate::duplicates::DuplicateGroup;
 use crate::history::Operation;
-use crate::stats::{format_duration, format_size, DryRunPreview, OrganizationStats};
+use crate::stats::{format_duration, format_size, DryRunPreview, OrganizationStats, SkippedFile};
 
 // ============================================================================
 // Banner & Main Menu
@@ -243,6 +243,10 @@ pub fn print_statistics(stats: &OrganizationStats) {
             style("[-]").yellow(),
             style(stats.files_skipped).yellow()
         );
+        // Show details for skipped files
+        if !stats.skipped_files.is_empty() {
+            print_skipped_files(&stats.skipped_files);
+        }
     }
     if stats.duplicates_found > 0 {
         println!(
@@ -278,6 +282,33 @@ pub fn print_statistics(stats: &OrganizationStats) {
     }
 
     println!("{}\n", sep);
+}
+
+/// Display details about skipped files and their reasons
+fn print_skipped_files(skipped: &[SkippedFile]) {
+    println!("\n  {}", style("Skipped files:").bold().yellow());
+
+    // Show up to 10 skipped files with reasons
+    for (i, sf) in skipped.iter().take(10).enumerate() {
+        let filename = sf.path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| sf.path.to_string_lossy().to_string());
+
+        println!(
+            "    {} {} - {}",
+            style(format!("{}.", i + 1)).dim(),
+            style(&filename).red(),
+            style(&sf.reason).dim()
+        );
+    }
+
+    if skipped.len() > 10 {
+        println!(
+            "    {} {}",
+            style("...").dim(),
+            style(format!("and {} more", skipped.len() - 10)).dim()
+        );
+    }
 }
 
 // ============================================================================

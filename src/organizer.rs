@@ -6,12 +6,13 @@
 // Generates dry-run previews and records moves for undo functionality.
 
 use std::collections::HashMap;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::{fs, process::Command};
 
 use crate::history::{self, FileMove};
 use crate::renamer::{self, RenameMode};
-use crate::stats::{DryRunPreview, OrganizationStats};
+use crate::stats::{DryRunPreview, OrganizationStats, SkipReason};
 use crate::ui;
 
 pub struct MoveResult {
@@ -33,7 +34,17 @@ pub fn move_files(
 
     for (folder_name, files) in files_map {
         let dest_dir = Path::new(source_dir).join(folder_name);
-        if fs::create_dir_all(&dest_dir).is_err() {
+
+        // Try to create destination directory with proper error handling
+        if let Err(e) = fs::create_dir_all(&dest_dir) {
+            // Log all files that couldn't be moved due to directory creation failure
+            for file_path in files {
+                stats.add_skipped_with_reason(
+                    file_path.clone(),
+                    SkipReason::DirectoryCreationFailed(e.to_string()),
+                );
+                progress.inc(1);
+            }
             continue;
         }
 
@@ -105,6 +116,12 @@ fn move_single_file(
     rename_mode: Option<&RenameMode>,
     stats: &mut OrganizationStats,
 ) -> Option<FileMove> {
+    // Check if source file exists
+    if !file_path.exists() {
+        stats.add_skipped_with_reason(file_path.to_path_buf(), SkipReason::FileNotFound);
+        return None;
+    }
+
     let size = file_path.metadata().map(|m| m.len()).unwrap_or(0);
     let (new_name, was_renamed) = get_new_name(file_path, rename_mode);
 
@@ -116,16 +133,52 @@ fn move_single_file(
     let from = file_path.to_string_lossy().to_string();
     let to = dest_path.to_string_lossy().to_string();
 
-    match fs::rename(file_path, &dest_path) {
+    match move_file_with_fallback(file_path, &dest_path) {
         Ok(_) => {
             let folder = dest_dir.file_name()?.to_string_lossy().to_string();
             stats.add_file(&folder, size);
             Some(FileMove { from, to })
         }
-        Err(_) => {
-            stats.add_skipped();
+        Err(e) => {
+            let reason = categorize_io_error(&e);
+            stats.add_skipped_with_reason(file_path.to_path_buf(), reason);
             None
         }
+    }
+}
+
+/// Move a file, falling back to copy+delete for cross-device moves
+fn move_file_with_fallback(src: &Path, dest: &Path) -> io::Result<()> {
+    match fs::rename(src, dest) {
+        Ok(_) => Ok(()),
+        Err(e) if is_cross_device_error(&e) => {
+            // Cross-device move: fall back to copy + delete
+            fs::copy(src, dest)?;
+            fs::remove_file(src)?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Check if an IO error is a cross-device link error (EXDEV)
+fn is_cross_device_error(e: &io::Error) -> bool {
+    // EXDEV = 18 on Unix (Linux, macOS, BSD)
+    // Windows uses ERROR_NOT_SAME_DEVICE = 17
+    #[cfg(unix)]
+    const CROSS_DEVICE_ERROR: i32 = 18; // EXDEV
+    #[cfg(windows)]
+    const CROSS_DEVICE_ERROR: i32 = 17; // ERROR_NOT_SAME_DEVICE
+
+    e.raw_os_error() == Some(CROSS_DEVICE_ERROR)
+}
+
+/// Categorize IO errors into user-friendly skip reasons
+fn categorize_io_error(e: &io::Error) -> SkipReason {
+    match e.kind() {
+        ErrorKind::NotFound => SkipReason::FileNotFound,
+        ErrorKind::PermissionDenied => SkipReason::PermissionDenied,
+        _ => SkipReason::MoveFailed(e.to_string()),
     }
 }
 

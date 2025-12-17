@@ -154,7 +154,35 @@ fn restore_file(mv: &FileMove) -> Result<(), String> {
         }
     }
 
-    fs::rename(&from, &to).map_err(|e| format!("Failed to restore {}: {}", mv.from, e))
+    // Use move with cross-device fallback
+    move_file_with_fallback(&from, &to)
+        .map_err(|e| format!("Failed to restore {}: {}", mv.from, e))
+}
+
+/// Move a file, falling back to copy+delete for cross-device moves
+fn move_file_with_fallback(src: &PathBuf, dest: &PathBuf) -> std::io::Result<()> {
+    match fs::rename(src, dest) {
+        Ok(_) => Ok(()),
+        Err(e) if is_cross_device_error(&e) => {
+            // Cross-device move: fall back to copy + delete
+            fs::copy(src, dest)?;
+            fs::remove_file(src)?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Check if an IO error is a cross-device link error (EXDEV)
+fn is_cross_device_error(e: &std::io::Error) -> bool {
+    // EXDEV = 18 on Unix (Linux, macOS, BSD)
+    // Windows uses ERROR_NOT_SAME_DEVICE = 17
+    #[cfg(unix)]
+    const CROSS_DEVICE_ERROR: i32 = 18; // EXDEV
+    #[cfg(windows)]
+    const CROSS_DEVICE_ERROR: i32 = 17; // ERROR_NOT_SAME_DEVICE
+
+    e.raw_os_error() == Some(CROSS_DEVICE_ERROR)
 }
 
 /// Remove empty folders after undo (recursive up to parent)
