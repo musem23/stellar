@@ -20,6 +20,30 @@ A fast CLI tool to organize your files automatically.
 - **Progress bar & stats** - Visual feedback during operations
 - **Safe** - Protects system folders, dev directories, and project folders
 
+## Security Suite (Vault)
+
+Stellar includes a secure file encryption suite:
+
+- **Lock/Unlock** - Encrypt individual files with AES-256-GCM
+- **Vault** - Centralized encrypted storage for sensitive files
+- **Recovery codes** - Optional recovery system for vault access
+- **Strong crypto** - Argon2id key derivation + AES-256-GCM
+- **Strong password policy** - 12+ chars, complexity requirements
+
+```bash
+# Lock a file
+stellar lock secret.pdf
+
+# Unlock a file
+stellar unlock secret.pdf.stlr
+
+# Vault commands
+stellar vault init              # Initialize vault
+stellar vault add file.pdf      # Add to vault
+stellar vault list              # List contents
+stellar vault extract file.pdf  # Extract from vault
+```
+
 ## Installation
 
 ### From source (recommended for beta)
@@ -33,7 +57,7 @@ cd stellar
 cargo build --release
 
 # Run
-./target/release/stellar
+./target/release/stellar-org
 
 # Or install globally
 cargo install --path .
@@ -61,6 +85,7 @@ stellar
   [=] Find duplicates
   [<] Undo last operation
   [H] History
+  [L] Security (lock/vault)
   [*] Settings
   [x] Exit
 ```
@@ -185,6 +210,42 @@ Documents = ["pdf", "doc", "docx", "txt"]
 Images = ["png", "jpg", "jpeg", "gif"]
 # ... add your own
 ```
+
+## Architecture
+
+```
+src/
+├── main.rs              # CLI entry point
+├── modes.rs             # Type-safe enums
+├── interactive/         # Interactive mode
+│   ├── mod.rs           # Main menu
+│   ├── security.rs      # Lock/Vault menu
+│   └── settings.rs      # Configuration
+├── vault/               # Security suite
+│   ├── crypto.rs        # Argon2id + AES-256-GCM
+│   ├── storage.rs       # Vault storage
+│   └── recovery.rs      # Recovery codes
+├── scanner.rs           # File scanning
+├── organizer.rs         # File organization
+├── renamer.rs           # Smart renaming
+└── ...
+```
+
+## Security Details
+
+### Encryption
+- **Key derivation**: Argon2id (64MB RAM, 3 iterations, 4 parallel lanes)
+- **Encryption**: AES-256-GCM (authenticated encryption)
+- **Nonces**: Random 12-byte nonces per encryption
+- **Key cleanup**: Zeroize keys from memory after use
+
+### Password Requirements
+- Minimum 12 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+- At least one special character
+- No common weak patterns (password, 123456, etc.)
 
 ## License
 

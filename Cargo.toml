@@ -1,6 +1,6 @@
 [package]
 name = "stellar-org"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 edition = "2021"
 authors = ["musem23"]
 description = "A fast CLI tool to organize your files automatically by category, date, or hybrid mode"
